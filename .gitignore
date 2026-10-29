@@ -1,0 +1,20 @@
+# Variáveis de ambiente com segredos e tokens
+.env
+
+# Cache de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Ambientes virtuais
+venv/
+venv_plex/
+.venv/
+env/
+
+# Ficheiros temporários de cópia e logs
+*.part
+*.tmp
+*.log
+

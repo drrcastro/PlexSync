@@ -2,20 +2,34 @@ import os
 import shutil
 from plexapi.server import PlexServer
 
-# --- CONFIGURAÇÕES ---
-PLEX_URL = 'http://plex.tbo:32400'  # URL/IP do servidor Plex
-PLEX_TOKEN = 'ZE5yJLSbz14ds8MdZcMw'         # Token do Plex
+# Tentar carregar via python-dotenv se disponível; caso contrário, carregar manualmente do .env
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # Fallback leve caso python-dotenv não esteja instalado
+    env_file = os.path.join(os.path.dirname(__file__), '.env')
+    if os.path.exists(env_file):
+        with open(env_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, val = line.split('=', 1)
+                    os.environ.setdefault(key.strip(), val.strip().strip("'\""))
 
-# LISTA DE PLAYLISTS A COPIAR (Nome no Plex)
-PLAYLISTS_TO_SYNC = ['❤️ Tracks', 'Carro', 'Populares']
+# --- CONFIGURAÇÕES CARREGADAS DO .ENV ---
+PLEX_URL = os.getenv('PLEX_URL', 'http://127.0.0.1:32400').rstrip('/')
+PLEX_TOKEN = os.getenv('PLEX_TOKEN', '')
 
-# PASTA RAIZ ONDE TUDO SERÁ GUARDADO NO DISCO
-BASE_TARGET_DIR = '/mnt/usb/musica_carro'
+# Lista de playlists a sincronizar (separadas por vírgula no .env)
+_raw_playlists = os.getenv('PLAYLISTS_TO_SYNC', '❤️ Tracks, Carro, Populares')
+PLAYLISTS_TO_SYNC = [name.strip() for name in _raw_playlists.split(',') if name.strip()]
 
-# SUB-PASTAS PARA ORGANIZAÇÃO (Criadas automaticamente)
-MEDIA_SUBDIR = 'Media'
-PLAYLISTS_SUBDIR = 'Playlists'
-# ---------------------
+# Pasta raiz e subdiretórios
+BASE_TARGET_DIR = os.getenv('BASE_TARGET_DIR', '/mnt/usb/musica_carro')
+MEDIA_SUBDIR = os.getenv('MEDIA_SUBDIR', 'Media')
+PLAYLISTS_SUBDIR = os.getenv('PLAYLISTS_SUBDIR', 'Playlists')
+# ----------------------------------------
 
 def safe_copy_file(src, dst):
     """
@@ -25,11 +39,10 @@ def safe_copy_file(src, dst):
     """
     temp_dst = dst + ".part"
     try:
-        # shutil.copyfile copia os dados binários puros
         shutil.copyfile(src, temp_dst)
         
-        # Tenta sincronizar timestamps (data/hora de modificação) se o disco permitir;
-        # se falhar (muito comum em SMB/FAT/exFAT), ignora o erro de permissão.
+        # Tenta sincronizar timestamps (data/hora) se o disco suportar;
+        # se falhar (comum em SMB/FAT/exFAT), ignora o erro de permissão.
         try:
             shutil.copystat(src, temp_dst)
         except (PermissionError, OSError):
@@ -45,8 +58,16 @@ def safe_copy_file(src, dst):
         raise
 
 def sync_plex_playlist():
+    if not PLEX_TOKEN or PLEX_TOKEN == 'o_teu_token_do_plex':
+        print("ERRO: Define o teu PLEX_TOKEN no ficheiro .env antes de executar.")
+        return
+
     print(f"A ligar ao Plex em {PLEX_URL}...")
-    plex = PlexServer(PLEX_URL, PLEX_TOKEN)
+    try:
+        plex = PlexServer(PLEX_URL, PLEX_TOKEN)
+    except Exception as e:
+        print(f"ERRO: Falha ao autenticar no servidor Plex: {e}")
+        return
     
     media_dir = os.path.join(BASE_TARGET_DIR, MEDIA_SUBDIR)
     playlists_dir = os.path.join(BASE_TARGET_DIR, PLAYLISTS_SUBDIR)
@@ -61,7 +82,7 @@ def sync_plex_playlist():
         try:
             playlist = plex.playlist(playlist_name)
         except Exception as e:
-            print(f"Erro: Playlist '{playlist_name}' não encontrada ({e}). A saltar...")
+            print(f"Aviso: Playlist '{playlist_name}' não encontrada no Plex ({e}). A saltar...")
             continue
 
         m3u_path = os.path.join(playlists_dir, f"{playlist_name}.m3u")
@@ -77,7 +98,7 @@ def sync_plex_playlist():
                 all_needed_files.add(filename)
                 
                 # Valida se o ficheiro já existe E se o tamanho é idêntico
-                # (evita ignorar ficheiros corrompidos ou cópias interrompidas)
+                # (evita ignorar ficheiros corrompidos ou cópias canceladas a meio)
                 should_copy = True
                 if os.path.exists(target_file_path):
                     try:
@@ -103,7 +124,7 @@ def sync_plex_playlist():
 
                 m3u_file.write(f"#EXTINF:{duration_sec},{artist} - {item.title}\n")
 
-                # Usar barras normais '/' para máxima compatibilidade com leitores multimédia
+                # Usar barras normais '/' para máxima compatibilidade com leitores de automóveis
                 relative_path = f"../{MEDIA_SUBDIR}/{filename}"
                 m3u_file.write(f"{relative_path}\n")
 
@@ -114,7 +135,7 @@ def sync_plex_playlist():
     needed_base_names = {os.path.splitext(f)[0] for f in all_needed_files}
 
     for file in os.listdir(media_dir):
-        # Ignorar eventuais ficheiros temporários .part
+        # Ignora ficheiros temporários .part
         if file.endswith('.part'):
             continue
 
