@@ -27,7 +27,7 @@ PLEX_URL = os.getenv('PLEX_URL', 'http://127.0.0.1:32400').rstrip('/')
 PLEX_TOKEN = os.getenv('PLEX_TOKEN', '')
 
 # Lista de playlists a sincronizar (separadas por vírgula no .env)
-_raw_playlists = os.getenv('PLAYLISTS_TO_SYNC', '❤️ Tracks, Carro, Populares')
+_raw_playlists = os.getenv('PLAYLISTS_TO_SYNC', '❤️ Tracks, Carro, Populares, 🎄 Natal')
 PLAYLISTS_TO_SYNC = [name.strip() for name in _raw_playlists.split(',') if name.strip()]
 
 # Pasta raiz e subdiretórios
